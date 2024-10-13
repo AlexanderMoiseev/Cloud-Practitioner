@@ -1,0 +1,14 @@
+{
+  "name": "cloud-practitioner-aws",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build-fe": "npm --prefix ./shop-react-redux-cloudfront run build",
+    "build-fe-and-deploy": "npm run build-fe && npm --prefix ./infra run cdk deploy",
+    "build-all-and-deploy": "npm run build-fe && npm --prefix ./infra run build && npm --prefix ./infra run cdk deploy"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
