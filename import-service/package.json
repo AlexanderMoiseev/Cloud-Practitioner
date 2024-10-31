@@ -1,0 +1,21 @@
+{
+  "name": "import-service",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "typescript": "^5.6.3"
+  },
+  "author": "Qef2",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.554.0",
+    "@aws-sdk/client-sqs": "^3.567.0",
+    "@aws-sdk/s3-request-presigner": "^3.554.0",
+    "csv-parser": "^3.0.0"
+  }
+}
