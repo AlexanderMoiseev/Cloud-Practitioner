@@ -13,6 +13,8 @@ export const createProduct = async (
 ) => {
   const productId = uuidv4();
   
+  console.log("create product lambda, product title", itemObject.title);
+  
   const productItem: Product = {
     id: productId,
     title: itemObject.title,

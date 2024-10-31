@@ -5,9 +5,9 @@ import * as path from 'path';
 import { Construct } from 'constructs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as s3 from "aws-cdk-lib/aws-s3";
-// import * as iam from '@aws-cdk/aws-iam';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 
 const BUCKET_NAME = "ImportBucket9407";
 
@@ -19,9 +19,9 @@ export class ImportServiceStack extends Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY
     });
     bucket.addCorsRule({
-        allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
-        allowedOrigins: ['*'],
-        allowedHeaders: ['*']
+      allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
+      allowedOrigins: ['*'],
+      allowedHeaders: ['*']
     });
 
     const importServicePath = path.join(__dirname, '../../../import-service');
@@ -67,14 +67,21 @@ export class ImportServiceStack extends Stack {
     importResource.addMethod(
       "GET",
       new apigateway.LambdaIntegration(importProductsFileFunction), {
-        apiKeyRequired: false
-      }
+      apiKeyRequired: false
+    }
     );
 
     importProductsFileFunction.addToRolePolicy(new iam.PolicyStatement({
-        actions: ['s3:GetObject'],
-        resources: [`${bucket.bucketArn}/uploaded/*`]
+      actions: ['s3:GetObject'],
+      resources: [`${bucket.bucketArn}/uploaded/*`]
     }));
+
+    // Get existing SQS queue
+    const catalogItemsQueue = sqs.Queue.fromQueueArn(
+      this,
+      "HelloLambdaStack-CatalogItemsQueueB3B6CE23-L25L0iKT53vv",
+      "arn:aws:sqs:us-east-1:296062589403:HelloLambdaStack-CatalogItemsQueueB3B6CE23-L25L0iKT53vv",
+    );
 
     const importFileParserFunction = new lambda.Function(
       this,
@@ -87,6 +94,7 @@ export class ImportServiceStack extends Stack {
         timeout: cdk.Duration.seconds(5),
         environment: {
           BUCKET_NAME: bucket.bucketName,
+          CATALOG_ITEMS_QUEUE_URL: catalogItemsQueue.queueUrl,
         },
       },
     );
@@ -99,7 +107,6 @@ export class ImportServiceStack extends Stack {
 
     bucket.grantReadWrite(importFileParserFunction);
 
+    catalogItemsQueue.grantSendMessages(importFileParserFunction);
   }
 }
-
-

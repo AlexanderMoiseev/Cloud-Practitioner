@@ -4,15 +4,17 @@ import {
   DeleteObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import csv from "csv-parser";
-
 import { formatJSONResponse, getConfig } from '../utils';
 import { Readable } from "stream";
 
-const { region } = getConfig();
+const { region, catalogItemsSQSQueue } = getConfig();
 
 export const importFileParserHandler = async (event) => {
   console.log("*** Event: ", event);
+  const sqsClient = new SQSClient({ region });
+
   const s3 = new S3Client({ region });
 
   const record = event.Records[0];
@@ -41,13 +43,24 @@ export const importFileParserHandler = async (event) => {
 
     await new Promise<void>((resolve, reject) => {
       readableStream
-        .pipe(csv())
+        .pipe(csv({
+          mapHeaders: ({ header }) => header.trim(),
+          //NOTE : Specify the delimiter used in your CSV file.
+          separator: ';'
+        }))
         .on("data", async (row) => {
           try {
-            console.log("Sent message :", row);
+            console.log("Sent message to SQS:", row);
+
+            const sendMessageCommand = new SendMessageCommand({
+              QueueUrl: catalogItemsSQSQueue,
+              MessageBody: JSON.stringify(row),
+            });
+            await sqsClient.send(sendMessageCommand);
+            console.log("Sent message to SQS completed:");
             records.push(row);
           } catch (err) {
-            console.error("Error sending message :", err);
+            console.error("Error sending message to SQS:", err);
             reject(new Error(String(err)));
           }
         })
@@ -85,8 +98,11 @@ export const importFileParserHandler = async (event) => {
       message: error.message || "Something went wrong",
     };
 
+
     return formatJSONResponse(body, 500);
   } finally {
     s3.destroy();
+    sqsClient.destroy();
   }
 };
+

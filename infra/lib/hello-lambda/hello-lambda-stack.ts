@@ -5,6 +5,10 @@ import * as path from 'path';
 import { Construct } from 'constructs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway'; // Add this line
 import * as dynamoDb from "aws-cdk-lib/aws-dynamodb";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as sqsEventSource from "aws-cdk-lib/aws-lambda-event-sources";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 
 export class HelloLambdaStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -16,15 +20,6 @@ export class HelloLambdaStack extends Stack {
       "products",
     );
     const stockTable = dynamoDb.Table.fromTableName(this, "stock", "stock");
-
-    const helloLambdaFunction = new lambda.Function(this, 'lambda-function', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      memorySize: 1024,
-      timeout: cdk.Duration.seconds(5),
-      handler: 'handler.main',
-      code: lambda.Code.fromAsset(path.join(__dirname, './')),
-    });
-
 
     const productServicePath = path.join(__dirname, '../../../product-service');
     console.log("productServicePath", productServicePath)
@@ -82,11 +77,11 @@ export class HelloLambdaStack extends Stack {
     });
 
     // hello lambda config
-    const helloFromLambdaIntegration = new apigateway.LambdaIntegration(helloLambdaFunction, {});
+    // const helloFromLambdaIntegration = new apigateway.LambdaIntegration(helloLambdaFunction, {});
     // Create a resource /hello and GET request under it
-    const helloResource = api.root.addResource("hello");
+    // const helloResource = api.root.addResource("hello");
     // On this resource attach a GET method which pass reuest to our Lambda function
-    helloResource.addMethod('GET', helloFromLambdaIntegration);
+    // helloResource.addMethod('GET', helloFromLambdaIntegration);
 
     // /products
     const productsResource = api.root.addResource("products");
@@ -106,9 +101,47 @@ export class HelloLambdaStack extends Stack {
       allowHeaders: cdk.aws_apigateway.Cors.DEFAULT_HEADERS,
     });
 
+    // Create SQS Queue
+    const catalogItemsQueue = new sqs.Queue(this, "CatalogItemsQueue", {
+      visibilityTimeout: cdk.Duration.seconds(300),
+    });
+
+    // // Create SNS topic
+    const createProductTopic = new sns.Topic(this, "CreateProductTopic");
+
+    // // Email subscription
+    createProductTopic.addSubscription(
+      new subscriptions.EmailSubscription("moiseevalexandr1@gmail.com"),
+    );
+
+    // // Lambda function to process SQS messages
+    const catalogBatchProcessFunction = new lambda.Function(this, "CatalogBatchProcess",
+      {
+        code: lambda.Code.fromAsset(productServicePath),
+        handler: 'build/handler.catalogBatchProcess',
+        timeout: cdk.Duration.seconds(10),
+        runtime: lambda.Runtime.NODEJS_20_X,
+        memorySize: 1024,
+        environment: {
+          PRODUCTS_TABLE: productsTable.tableName,
+          STOCKS_TABLE: stockTable.tableName,
+          SNS_TOPIC_ARN: createProductTopic.topicArn,
+        },
+      },
+    );
+
+    catalogBatchProcessFunction.addEventSource(
+      new sqsEventSource.SqsEventSource(catalogItemsQueue, {
+        batchSize: 2,
+        maxBatchingWindow: cdk.Duration.minutes(1)
+      }),
+    );
+
+    productsTable.grantReadWriteData(catalogBatchProcessFunction);
+    stockTable.grantReadWriteData(catalogBatchProcessFunction);
+    createProductTopic.grantPublish(catalogBatchProcessFunction);
   }
 }
-
 
 
 // const productsResource = api.root.addResource("products");
