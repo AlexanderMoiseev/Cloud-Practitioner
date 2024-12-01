@@ -44,6 +44,20 @@ export class ImportServiceStack extends Stack {
     );
     bucket.grantReadWrite(importProductsFileFunction);
 
+
+    // Create Lambda authorizer from existing Lambda function from  auth-service
+    const basicAuthorizerLambda = lambda.Function.fromFunctionArn(
+      this,
+      "basicAuthorizer",
+      "arn:aws:lambda:us-east-1:296062589403:function:AuthorizationServiceStack-BasicAuthorizerFunctionA-4y2Jbl8Lr68E",
+    );
+
+    const basicAuthorizer = new apigateway.TokenAuthorizer(this, "Authorizer", {
+      handler: basicAuthorizerLambda,
+      identitySource: apigateway.IdentitySource.header("Authorization"),
+    });
+
+
     // import
     const api = new apigateway.RestApi(this, "ImportApi", {
       restApiName: "Import Service",
@@ -67,9 +81,32 @@ export class ImportServiceStack extends Stack {
     importResource.addMethod(
       "GET",
       new apigateway.LambdaIntegration(importProductsFileFunction), {
-      apiKeyRequired: false
-    }
-    );
+      authorizer: basicAuthorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
+    });
+
+    api.addGatewayResponse("UnauthorizedResponse", {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      statusCode: "401",
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Credentials": "'true'",
+      },
+      templates: {
+        "application/json": JSON.stringify({ message: "Unauthorized" }),
+      },
+    });
+    api.addGatewayResponse("AccessDeniedResponse", {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      statusCode: "403",
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'*'",
+        "Access-Control-Allow-Credentials": "'true'",
+      },
+      templates: {
+        "application/json": JSON.stringify({ message: "Access denied" }),
+      },
+    });
 
     importProductsFileFunction.addToRolePolicy(new iam.PolicyStatement({
       actions: ['s3:GetObject'],
